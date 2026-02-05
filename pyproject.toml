@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "django-nexgensis-forms"
+version = "1.0.0"
+description = "A powerful Django app for creating and managing dynamic forms"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Nexgensis", email = "contact@nexgensis.com"}
+]
+keywords = ["django", "forms", "dynamic-forms", "form-builder", "versioning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Django",
+    "Framework :: Django :: 4.2",
+    "Framework :: Django :: 5.0",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+]
+
+dependencies = [
+    "Django>=4.2,<5.1",
+    "djangorestframework>=3.14",
+    "drf-yasg>=1.21.7",
+    "openpyxl>=3.1.0",
+    "pytz>=2023.3",
+    "python-dateutil>=2.8.0",
+    "tzlocal>=5.0",
+    "uuid-utils>=0.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-django>=4.5",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "flake8>=6.0",
+    "isort>=5.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/nexgensis/django-nexgensis-forms"
+Documentation = "https://github.com/nexgensis/django-nexgensis-forms/wiki"
+Repository = "https://github.com/nexgensis/django-nexgensis-forms"
+"Bug Tracker" = "https://github.com/nexgensis/django-nexgensis-forms/issues"
+
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311', 'py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+  | migrations
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_glob = ["*/migrations/*"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+python_files = ["tests.py", "test_*.py"]
+addopts = "--cov=nexgensis_forms --cov-report=html --cov-report=term"
