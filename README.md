@@ -260,34 +260,194 @@ child_field = FormFields.objects.create(
 
 ## Extending Forms with Project-Specific Fields
 
-The package provides a generic Form model. If your project needs additional fields like `location`, extend it in your consumer project:
+The package provides a generic Form model without project-specific fields like `location`. Follow these 4 steps to add full location support in your consumer project.
+
+### Step 1: Extend the Model
 
 ```python
 # yourproject/models.py
+from django.db import models
 from nexgensis_forms.models import Form
 
 class ProjectForm(Form):
-    """Extended Form with project-specific fields."""
+    """Extended Form with location support."""
     location = models.ForeignKey(
-        'yourapp.Location',
+        'configapp.Location',
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='forms'
     )
-
-    class Meta:
-        # Use multi-table inheritance (gets its own DB table)
-        pass
 ```
 
-Then create and run migrations in your consumer project:
+Then generate migrations:
 
 ```bash
-python manage.py makemigrations yourapp
+python manage.py makemigrations yourproject
 python manage.py migrate
 ```
 
-This keeps the package generic while allowing project-specific customization.
+### Step 2: Extend Serializers
+
+Override only the serializers that need the new field:
+
+```python
+# yourproject/serializers.py
+from rest_framework import serializers
+from nexgensis_forms.serializers import FormCreateSerializer, FormSerializer, FormListSerializer
+from configapp.models import Location
+from .models import ProjectForm
+
+# 1. Create - accept location in request
+class ProjectFormCreateSerializer(FormCreateSerializer):
+    location = serializers.PrimaryKeyRelatedField(
+        queryset=Location.objects.all(), required=False, allow_null=True
+    )
+
+# 2. Detail - return location in response
+class ProjectFormSerializer(FormSerializer):
+    location = serializers.SerializerMethodField()
+
+    class Meta(FormSerializer.Meta):
+        model = ProjectForm
+        fields = FormSerializer.Meta.fields + ['location']
+
+    def get_location(self, obj):
+        if obj.location:
+            return {"id": str(obj.location.id), "name": obj.location.name}
+        return None
+
+# 3. List - return location in list response
+class ProjectFormListSerializer(FormListSerializer):
+    location = serializers.SerializerMethodField()
+
+    class Meta(FormListSerializer.Meta):
+        model = ProjectForm
+        fields = FormListSerializer.Meta.fields + ['location']
+
+    def get_location(self, obj):
+        if obj.location:
+            return {"id": str(obj.location.id), "name": obj.location.name}
+        return None
+```
+
+### Step 3: Override Views
+
+Only 4 form views need overriding. All other endpoints (DataType, FieldType, FormType, MainProcess, FocusArea, Criteria, FormDraft, BulkUpload, FormFields) work directly from the package.
+
+```python
+# yourproject/views.py
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from nexgensis_forms.utils import api_response
+from .models import ProjectForm
+from .serializers import ProjectFormCreateSerializer, ProjectFormSerializer, ProjectFormListSerializer
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_forms(request):
+    """List forms with location filter support."""
+    forms = ProjectForm.objects.select_related(
+        'form_type', 'main_process', 'criteria', 'location'
+    ).filter(effective_end_date__isnull=True)
+
+    # Location filter
+    location_id = request.query_params.get('location')
+    if location_id:
+        forms = forms.filter(location_id=location_id)
+
+    # Add other filters as needed (form_type, main_process, criteria, search)
+    # ... your filter logic here
+
+    serializer = ProjectFormListSerializer(forms, many=True)
+    return api_response(data=serializer.data, message="Forms retrieved")
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_form(request):
+    """Create form with location support."""
+    serializer = ProjectFormCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        form = serializer.save()
+        # Set location if provided
+        location = serializer.validated_data.get('location')
+        if location:
+            form.location = location
+            form.save(update_fields=['location'])
+        return api_response(data={"id": str(form.id)}, message="Form created", status_code=201)
+    return api_response(errors=serializer.errors, message="Validation failed", status_code=400)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def form_detail(request, pk):
+    """Get form detail with location."""
+    try:
+        form = ProjectForm.objects.select_related(
+            'form_type', 'main_process', 'criteria', 'location'
+        ).get(pk=pk)
+        serializer = ProjectFormSerializer(form)
+        return api_response(data=serializer.data, message="Form retrieved")
+    except ProjectForm.DoesNotExist:
+        return api_response(message="Form not found", status_code=404)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_forms_list(request):
+    """List forms (simple) with location filter."""
+    forms = ProjectForm.objects.select_related(
+        'form_type', 'location'
+    ).filter(effective_end_date__isnull=True)
+
+    location_id = request.query_params.get('location')
+    if location_id:
+        forms = forms.filter(location_id=location_id)
+
+    serializer = ProjectFormListSerializer(forms, many=True)
+    return api_response(data=serializer.data, message="Forms retrieved")
+```
+
+### Step 4: Override URLs
+
+Place your custom URLs **before** the package include so they take priority:
+
+```python
+# yourproject/urls.py
+from django.urls import path, include
+from . import views
+
+urlpatterns = [
+    # Your overridden form endpoints (with location support)
+    path('api/forms/form/get/', views.get_forms, name='get_forms'),
+    path('api/forms/form/list/', views.get_forms_list, name='get_forms_list'),
+    path('api/forms/form/create/', views.create_form, name='create_form'),
+    path('api/forms/form/<str:pk>/', views.form_detail, name='form_detail'),
+
+    # Package handles remaining ~37 endpoints automatically
+    path('api/forms/', include('nexgensis_forms.urls')),
+]
+```
+
+### Available Serializers for Extension
+
+| Serializer | Purpose | Extend when adding fields to |
+|------------|---------|------------------------------|
+| `FormCreateSerializer` | Form creation | Create API |
+| `FormSerializer` | Form detail response | Detail API |
+| `FormListSerializer` | Form list response | List API |
+| `FormWithSectionsSerializer` | Form with sections | Sections API |
+| `FormDraftSerializer` | Draft response | Draft API |
+
+### Available Views for Override
+
+| View Function | URL Pattern | Override when |
+|--------------|-------------|---------------|
+| `get_dynamic_forms` | `form/get/` | Adding list filters |
+| `get_dynamic_forms_list` | `form/list/` | Adding list filters |
+| `form_create` | `form/create/` | Adding fields to creation |
+| `form_detail` | `form/<pk>/` | Adding fields to response |
+| `forms_by_type` | `form/by_type/` | Adding filters |
+| `form_with_sections_list` | `form/with_sections/` | Adding fields to sections response |
+
+Views that do NOT need overriding: DataType, FieldType, FormType, MainProcess, FocusArea, Criteria, FormDraft, FormFields, BulkUpload.
 
 ## Development
 
