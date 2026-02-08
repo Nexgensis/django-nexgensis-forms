@@ -11,7 +11,6 @@ from ..serializers.data_type_serializers import (
     DataTypeListSerializer
 )
 from ..utils import api_response
-from djangoapp.utilities.custom_utils.cache_decorators import cache_response
 from ..views.swagger import (
     data_type_list_swagger,
     data_type_create_swagger,

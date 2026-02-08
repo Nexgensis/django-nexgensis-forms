@@ -38,8 +38,6 @@ INSTALLED_APPS = [
 
 ```python
 NEXGENSIS_FORMS = {
-    'USER_MODEL': 'auth.User',  # Model for created_by field
-    'LOCATION_MODEL': None,  # Optional: 'yourapp.Location'
     'WORKFLOW_INTEGRATION': False,  # Enable if using nexgensis-workflow
     'ENABLE_BULK_UPLOAD': True,
     'MAX_UPLOAD_SIZE': 10 * 1024 * 1024,  # 10MB
@@ -196,8 +194,7 @@ file: <excel-file>
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `USER_MODEL` | `'auth.User'` | User model for created_by fields |
-| `LOCATION_MODEL` | `None` | Optional location model |
+| `WORKFLOW_CHECKLIST_MODEL` | `None` | Swappable workflow checklist model |
 | `WORKFLOW_INTEGRATION` | `False` | Enable workflow integration |
 | `ENABLE_BULK_UPLOAD` | `True` | Enable Excel bulk operations |
 | `MAX_UPLOAD_SIZE` | `10MB` | Maximum Excel file size |
@@ -260,6 +257,37 @@ child_field = FormFields.objects.create(
     order=1
 )
 ```
+
+## Extending Forms with Project-Specific Fields
+
+The package provides a generic Form model. If your project needs additional fields like `location`, extend it in your consumer project:
+
+```python
+# yourproject/models.py
+from nexgensis_forms.models import Form
+
+class ProjectForm(Form):
+    """Extended Form with project-specific fields."""
+    location = models.ForeignKey(
+        'yourapp.Location',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='forms'
+    )
+
+    class Meta:
+        # Use multi-table inheritance (gets its own DB table)
+        pass
+```
+
+Then create and run migrations in your consumer project:
+
+```bash
+python manage.py makemigrations yourapp
+python manage.py migrate
+```
+
+This keeps the package generic while allowing project-specific customization.
 
 ## Development
 

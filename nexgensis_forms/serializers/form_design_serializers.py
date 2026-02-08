@@ -111,7 +111,6 @@ class FormCreateSerializer(serializers.Serializer):
     # Optional categorization foreign keys
     main_process = serializers.UUIDField(required=False, allow_null=True, help_text="UUID of the main process")
     criteria = serializers.UUIDField(required=False, allow_null=True, help_text="UUID of the criteria")
-    location = serializers.CharField(required=False, allow_null=True, allow_blank=True, help_text="unique_code or UUID of the location")
 
     def validate_title(self, value):
         if not value or not value.strip():
@@ -173,35 +172,6 @@ class FormCreateSerializer(serializers.Serializer):
             self._criteria = criteria
         return value
 
-    def validate_location(self, value):
-        """Validate location exists if provided - accepts both unique_code and UUID"""
-        if value:
-            try:
-                from configapp.models import Location
-            except ImportError:
-                Location = None  # Optional - configure via NEXGENSIS_FORMS settings
-            # Try lookup by unique_code first
-            location = Location.objects.filter(
-                unique_code=value,
-                effective_end_date__isnull=True
-            ).first()
-
-            # Fallback to UUID (only if value is a valid UUID)
-            if not location:
-                try:
-                    uuid.UUID(str(value))
-                    location = Location.objects.filter(
-                        id=value,
-                        effective_end_date__isnull=True
-                    ).first()
-                except (ValueError, AttributeError):
-                    pass  # Not a valid UUID, skip this lookup
-
-            if not location:
-                raise serializers.ValidationError("Location does not exist")
-            self._location = location
-        return value
-
     @transaction.atomic
     def create(self, validated_data):
         # Use the validated form_type object stored during validation
@@ -215,8 +185,7 @@ class FormCreateSerializer(serializers.Serializer):
             system_config=validated_data.get('system_config', {}),
             user_config=validated_data.get('user_config', {}),
             main_process=getattr(self, '_main_process', None),
-            criteria=getattr(self, '_criteria', None),
-            location=getattr(self, '_location', None)
+            criteria=getattr(self, '_criteria', None)
         )
         # Set root_form to itself
         form.root_form = form
@@ -328,7 +297,6 @@ class DynamicFormResponseSerializer(serializers.ModelSerializer):
     # Categorization foreign keys
     main_process = serializers.SerializerMethodField()
     criteria = serializers.SerializerMethodField()
-    location = serializers.SerializerMethodField()
 
     # Version tracking fields
     id = serializers.CharField(source='unique_code', read_only=True)
@@ -340,7 +308,7 @@ class DynamicFormResponseSerializer(serializers.ModelSerializer):
             'id', 'version_id',  # Version IDs
             'name', 'title', 'type', 'description', 'is_completed',
             'version', 'all_versions',
-            'main_process', 'criteria', 'location',
+            'main_process', 'criteria',
             'created_on', 'updated_on'
         ]
 
@@ -393,13 +361,6 @@ class DynamicFormResponseSerializer(serializers.ModelSerializer):
             }
         return None
 
-    def get_location(self, obj):
-        if obj.location:
-            return {
-                'id': str(obj.location.id),
-                'name': obj.location.location_name
-            }
-        return None
 
 
 # ============== Form Fields Response Serializers ==============

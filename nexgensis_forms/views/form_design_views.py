@@ -11,20 +11,13 @@ from ..models import (
     FieldType, Form, FormType, FormDraft, FormSections, FormFields,
     MainProcess, Criteria
 )
-try:
-    from configapp.models import Location
-except ImportError:
-    Location = None  # Optional - configure via NEXGENSIS_FORMS settings
 from ..serializers.form_design_serializers import (
     FormSerializer, FormCreateSerializer, DynamicFormResponseSerializer
 )
-from ..utils import api_response
-from djangoapp.utilities.custom_utils.cache_decorators import cache_response
-from ..utils import format_user_timezone
-try:
-    from ticketworkflowapp.models import WorkflowChecklist
-except ImportError:
-    WorkflowChecklist = None  # Optional - requires workflow integration
+from ..utils import api_response, format_user_timezone
+from ..conf import get_workflow_checklist_model
+
+WorkflowChecklist = get_workflow_checklist_model()
 from ..views.swagger import (
     get_dynamic_forms_swagger,
     form_create_swagger,
@@ -60,7 +53,6 @@ def get_dynamic_forms(request):
     - workflow_name_id: Filter by workflow ID
     - main_process: Filter by main process UUID
     - criteria: Filter by criteria UUID
-    - location: Filter by location UUID
     """
     try:
         page_number = int(request.GET.get("page_number", 1))
@@ -70,10 +62,10 @@ def get_dynamic_forms(request):
 
         query = Q(effective_end_date__isnull=True)
 
-        # Search filter
+        # Search filter - searches in title and form type name
         search_title = request.GET.get("search", "").strip()
         if search_title:
-            query &= Q(title__icontains=search_title)
+            query &= (Q(title__icontains=search_title) | Q(form_type__name__icontains=search_title))
 
         # Completion filter (default to True - only show completed forms)
         is_completed_param = request.GET.get("is_completed", "true")
@@ -129,20 +121,21 @@ def get_dynamic_forms(request):
                     status_code=status.HTTP_404_NOT_FOUND
                 )
 
-        # Workflow filters
-        workflow_type_id = request.GET.get("workflow_type_id")
-        if workflow_type_id:
-            workflow_checklists = WorkflowChecklist.objects.filter(
-                workflow_stage__workflow__type_id=workflow_type_id
-            ).values_list("checklist_id", flat=True)
-            query &= Q(id__in=workflow_checklists)
+        # Workflow filters (only if workflow model is configured)
+        if WorkflowChecklist is not None:
+            workflow_type_id = request.GET.get("workflow_type_id")
+            if workflow_type_id:
+                workflow_checklists = WorkflowChecklist.objects.filter(
+                    workflow_stage__workflow__type_id=workflow_type_id
+                ).values_list("checklist_id", flat=True)
+                query &= Q(id__in=workflow_checklists)
 
-        workflow_name_id = request.GET.get("workflow_name_id")
-        if workflow_name_id:
-            workflow_checklists = WorkflowChecklist.objects.filter(
-                workflow_stage__workflow_id=workflow_name_id
-            ).values_list("checklist_id", flat=True)
-            query &= Q(id__in=workflow_checklists)
+            workflow_name_id = request.GET.get("workflow_name_id")
+            if workflow_name_id:
+                workflow_checklists = WorkflowChecklist.objects.filter(
+                    workflow_stage__workflow_id=workflow_name_id
+                ).values_list("checklist_id", flat=True)
+                query &= Q(id__in=workflow_checklists)
 
         # Filter by main_process
         main_process_id = request.GET.get("main_process")
@@ -186,27 +179,6 @@ def get_dynamic_forms(request):
                     status_code=status.HTTP_404_NOT_FOUND
                 )
 
-        # Filter by location
-        location_id = request.GET.get("location")
-        if location_id:
-            location_obj = Location.objects.filter(
-                id=location_id,
-                effective_end_date__isnull=True
-            ).first()
-            if location_obj:
-                query &= Q(location_id=location_obj.id)
-            else:
-                return api_response(
-                    data={
-                        "forms": [],
-                        "obj_count": 0,
-                        "max_pages": 1,
-                        "max_rows": max_rows
-                    },
-                    message="Location not found",
-                    status_code=status.HTTP_404_NOT_FOUND
-                )
-
         # Get all forms matching the query
         all_forms = Form.objects.filter(query)
 
@@ -220,7 +192,7 @@ def get_dynamic_forms(request):
         latest_forms = Form.objects.filter(
             id__in=latest_form_ids.values()
         ).select_related(
-            'form_type', 'main_process', 'criteria', 'location'
+            'form_type', 'main_process', 'criteria'
         ).order_by("-id")
 
         forms_count = latest_forms.count()
@@ -272,7 +244,6 @@ def form_create(request):
     - user_config: User configuration (optional)
     - main_process: UUID of the main process (optional)
     - criteria: UUID of the criteria (optional)
-    - location: unique_code or UUID of the location (optional)
     """
     serializer = FormCreateSerializer(data=request.data)
 
@@ -571,7 +542,9 @@ def create_form_fields(request, form_id):
                     create_fields(field["fields"], section, parent_field=form_field)
 
         # Check if form is attached to a workflow
-        is_linked_to_workflow = WorkflowChecklist.objects.filter(checklist_id=form.id).exists()
+        is_linked_to_workflow = False
+        if WorkflowChecklist is not None:
+            is_linked_to_workflow = WorkflowChecklist.objects.filter(checklist_id=form.id).exists()
 
         if is_linked_to_workflow:
             # Create new version
@@ -734,9 +707,10 @@ def get_form_fields(request, form_id):
         sections = FormSections.objects.filter(form=form)
 
         workflow_name = None
-        workflow_checklist = WorkflowChecklist.objects.filter(checklist=form).first()
-        if workflow_checklist:
-            workflow_name = workflow_checklist.workflow_stage.workflow.name
+        if WorkflowChecklist is not None:
+            workflow_checklist = WorkflowChecklist.objects.filter(checklist=form).first()
+            if workflow_checklist:
+                workflow_name = workflow_checklist.workflow_stage.workflow.name
 
         def serialize_field(field):
             data = {
@@ -870,7 +844,6 @@ def get_dynamic_forms_list(request):
     - is_completed: Filter by completion status (default: true)
     - main_process: Filter by main process UUID
     - criteria: Filter by criteria UUID
-    - location: Filter by location UUID
 
     Returns:
     - data: List of forms directly (no wrapper object)
@@ -960,22 +933,6 @@ def get_dynamic_forms_list(request):
                     status_code=status.HTTP_404_NOT_FOUND
                 )
 
-        # Filter by location
-        location_id = request.GET.get("location")
-        if location_id:
-            location_obj = Location.objects.filter(
-                id=location_id,
-                effective_end_date__isnull=True
-            ).first()
-            if location_obj:
-                query &= Q(location_id=location_obj.id)
-            else:
-                return api_response(
-                    data=[],
-                    message="Location not found",
-                    status_code=status.HTTP_404_NOT_FOUND
-                )
-
         # Get all forms matching the query
         all_forms = Form.objects.filter(query)
 
@@ -989,7 +946,7 @@ def get_dynamic_forms_list(request):
         latest_forms = Form.objects.filter(
             id__in=latest_form_ids.values()
         ).select_related(
-            'form_type', 'main_process', 'criteria', 'location'
+            'form_type', 'main_process', 'criteria'
         ).order_by("-id")
 
         # Build response list directly
@@ -1029,10 +986,6 @@ def get_dynamic_forms_list(request):
                     "id": str(form.criteria.id),
                     "name": form.criteria.name
                 } if form.criteria else None,
-                "location": {
-                    "id": str(form.location.id),
-                    "name": form.location.location_name
-                } if form.location else None,
                 "created_on": format_user_timezone(form.created_on) if form.created_on else None,
                 "updated_on": format_user_timezone(form.updated_on) if hasattr(form, 'updated_on') and form.updated_on else None,
             })

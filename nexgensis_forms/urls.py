@@ -1,4 +1,7 @@
 from django.urls import path
+
+app_name = "nexgensis_forms"
+
 from .views.data_type_views import (
     data_type_list, data_type_create,
     data_type_update, data_type_delete

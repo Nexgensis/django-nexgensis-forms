@@ -73,3 +73,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Development files (not needed in package)
+manage.py
+db.sqlite3

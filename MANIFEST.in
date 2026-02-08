@@ -1,9 +1,15 @@
 include README.md
 include LICENSE
-include requirements.txt
+include CHANGELOG.md
 recursive-include nexgensis_forms/migrations *.py
 recursive-include nexgensis_forms/templates *
 recursive-include nexgensis_forms/static *
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
 recursive-exclude * .DS_Store
+exclude manage.py
+exclude setup.py
+exclude requirements.txt
+exclude STATUS.md
+exclude PRODUCTION_CHECKLIST.md
+exclude FUNCTIONALITY_REVIEW.md

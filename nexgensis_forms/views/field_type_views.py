@@ -9,7 +9,6 @@ from ..serializers.field_type_serializers import (
     FieldTypeListSerializer, FieldTypeSerializer, FieldTypeCreateUpdateSerializer
 )
 from ..utils import api_response
-from djangoapp.utilities.custom_utils.cache_decorators import cache_response
 from ..views.swagger import (
     field_type_list_swagger,
     field_type_create_swagger,

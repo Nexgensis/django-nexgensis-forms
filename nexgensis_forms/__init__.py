@@ -12,5 +12,3 @@ hierarchical structures, and flexible field types.
 __version__ = '1.0.0'
 __author__ = 'Nexgensis'
 __license__ = 'MIT'
-
-default_app_config = 'nexgensis_forms.apps.NexgensisFormsConfig'

@@ -2,11 +2,11 @@ from rest_framework.decorators import api_view
 from django.db import transaction
 
 from ..models import Form
-try:
-    from ticketworkflowapp.models import WorkflowChecklist
-except ImportError:
-    WorkflowChecklist = None  # Optional - requires workflow integration
 from ..utils import api_response
+from ..conf import get_workflow_checklist_model
+
+# Get swappable workflow model from configuration
+WorkflowChecklist = get_workflow_checklist_model()
 from ..views.swagger import delete_form_swagger
 import logging
 
@@ -39,15 +39,16 @@ def delete_form(request, pk):
         if not form:
             return api_response(message="Form not found.", status_code=404)
 
-        # Check if form is attached to any workflow
-        if WorkflowChecklist.objects.filter(
-            checklist_id=form.id,
-            workflow_stage__workflow__is_deleted=False
-        ).exists():
-            return api_response(
-                message="This form cannot be deleted because it is linked to a workflow.",
-                status_code=400
-            )
+        # Check if form is attached to any workflow (only if workflow model is configured)
+        if WorkflowChecklist is not None:
+            if WorkflowChecklist.objects.filter(
+                checklist_id=form.id,
+                workflow_stage__workflow__is_deleted=False
+            ).exists():
+                return api_response(
+                    message="This form cannot be deleted because it is linked to a workflow.",
+                    status_code=400
+                )
 
         # Use TimestampedModel2's built-in soft delete (sets effective_end_date)
         form.delete()

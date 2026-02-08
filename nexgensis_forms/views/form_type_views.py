@@ -13,7 +13,6 @@ from ..serializers.form_type_serializers import (
     FormTypeCreateUpdateSerializer
 )
 from ..utils import api_response
-from djangoapp.utilities.custom_utils.cache_decorators import cache_response
 from ..views.swagger import (
     form_type_list_swagger,
     form_type_create_swagger,

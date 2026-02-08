@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["django", "forms", "dynamic-forms", "form-builder", "versioning"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Framework :: Django",
     "Framework :: Django :: 4.2",
     "Framework :: Django :: 5.0",

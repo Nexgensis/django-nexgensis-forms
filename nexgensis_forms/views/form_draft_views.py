@@ -10,11 +10,10 @@ from django.db.models import Max
 from ..models import Form, FormDraft, FormType
 from ..serializers.form_design_serializers import FormDraftCreateUpdateSerializer
 from ..utils import api_response
-from djangoapp.utilities.custom_utils.cache_decorators import cache_response
-try:
-    from ticketworkflowapp.models import WorkflowChecklist
-except ImportError:
-    WorkflowChecklist = None  # Optional - requires workflow integration
+from ..conf import get_workflow_checklist_model
+
+# Get swappable workflow model from configuration
+WorkflowChecklist = get_workflow_checklist_model()
 from ..views.swagger import (
     get_form_draft_swagger,
     save_form_draft_swagger,
@@ -46,12 +45,12 @@ def get_form_draft(request, form_id, version=None):
         form = Form.objects.filter(
             unique_code=form_id,
             effective_end_date__isnull=True
-        ).select_related('form_type', 'main_process', 'criteria', 'location').first()
+        ).select_related('form_type', 'main_process', 'criteria').first()
 
         # Fallback to UUID lookup if not found by unique_code
         if not form:
             form = Form.objects.filter(id=form_id).select_related(
-                'form_type', 'main_process', 'criteria', 'location'
+                'form_type', 'main_process', 'criteria'
             ).first()
 
         if not form:
@@ -67,7 +66,7 @@ def get_form_draft(request, form_id, version=None):
                 root_form=root_form,
                 version=version,
                 effective_end_date__isnull=True
-            ).select_related('form_type', 'main_process', 'criteria', 'location').first()
+            ).select_related('form_type', 'main_process', 'criteria').first()
             if not form:
                 return api_response(
                     message="Version not found",
@@ -82,9 +81,10 @@ def get_form_draft(request, form_id, version=None):
             )
 
         workflow_name = None
-        workflow_checklist = WorkflowChecklist.objects.filter(checklist=form).first()
-        if workflow_checklist:
-            workflow_name = workflow_checklist.workflow_stage.workflow.name
+        if WorkflowChecklist is not None:
+            workflow_checklist = WorkflowChecklist.objects.filter(checklist=form).first()
+            if workflow_checklist:
+                workflow_name = workflow_checklist.workflow_stage.workflow.name
 
         form_details = {
             "title": form.title,
@@ -101,10 +101,6 @@ def get_form_draft(request, form_id, version=None):
                 "id": str(form.criteria.id),
                 "name": form.criteria.name
             } if form.criteria else None,
-            "location": {
-                "id": str(form.location.id),
-                "name": form.location.location_name
-            } if form.location else None,
         }
 
         logger.info(f"User {request.user.id} retrieved draft for form {form_id}")
@@ -242,7 +238,9 @@ def save_form_draft(request, form_id):
                 )
 
         # Check if form is attached to a workflow
-        is_linked_to_workflow = WorkflowChecklist.objects.filter(checklist_id=form.id).exists()
+        is_linked_to_workflow = False
+        if WorkflowChecklist is not None:
+            is_linked_to_workflow = WorkflowChecklist.objects.filter(checklist_id=form.id).exists()
 
         if is_linked_to_workflow:
             # Create new version without setting is_completed=True
